@@ -1,0 +1,47 @@
+-- Whetstone: example scripts on recipe cards (fields as in RecipeCard.fieldSpecs).
+-- These use only base Speakeasy, so they must be accepted by grammar/base.ebnf.
+
+-- Jump to a recipe from a button
+on mouseUp
+  go to card "Camera fix"
+end mouseUp
+
+-- Start a new recipe in the "stuck" state
+on newRecipe
+  create card "Untitled"
+  put "stuck" into field "status"
+end newRecipe
+
+-- Refuse to mark a recipe solved without recorded calls
+on solved
+  if field "calls" is empty then
+    answer "Record or paste the calls first." with "OK"
+    exit solved
+  end if
+  put "solved" into field "status"
+  save
+end solved
+
+-- Look up recipes by symptom; the results are a substack you can walk through
+on findRecipe
+  ask "What is going wrong?"
+  find cards where field "symptom" contains it into stack "hits"
+  go to stack "hits"
+  go to first card
+end findRecipe
+
+-- List every symptom in the message box
+on listSymptoms
+  put empty into out
+  repeat with i = 1 to the number of cards
+    put line 1 of field "symptom" of card i & return after out
+  end repeat
+  put out into msg
+end listSymptoms
+
+-- Is this recipe out of date for the version I am running?
+-- (older than / newer than compare dotted versions, so "5.2" is older than "5.10")
+function isStale currentVersion
+  if field "applies_until" is empty then return false
+  return field "applies_until" is older than currentVersion
+end isStale

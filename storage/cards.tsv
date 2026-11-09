@@ -1,0 +1,65 @@
+row	col	val
+cho0aitsj3i-0	kind	card
+cho0aitsj3i-0	name	Camera points nowhere
+cho0aitsj3i-0	stack	Recipes
+cho0aitsj3i-0	script	
+cho0aitsj3i-0	field|symptom	camera view is empty after adding a camera
+cho0aitsj3i-0	field|expected	
+cho0aitsj3i-0	field|observed	
+cho0aitsj3i-0	field|context	
+cho0aitsj3i-0	field|summary	
+cho0aitsj3i-0	field|narration	
+cho0aitsj3i-0	field|calls	
+cho0aitsj3i-0	field|steps	
+cho0aitsj3i-0	field|clip	
+cho0aitsj3i-0	field|blender_info	
+cho0aitsj3i-0	field|tool	
+cho0aitsj3i-0	field|version	
+cho0aitsj3i-0	field|applies_from	
+cho0aitsj3i-0	field|applies_until	
+cho0aitsj3i-0	field|superseded_by	
+cho0aitsj3i-0	field|keywords	
+cho0aitsj3i-0	field|status	stuck
+cho0aitsjjm-1	kind	card
+cho0aitsjjm-1	name	Grease pencil has no fill
+cho0aitsjjm-1	stack	Recipes
+cho0aitsjjm-1	script	
+cho0aitsjjm-1	field|symptom	grease pencil strokes show no fill
+cho0aitsjjm-1	field|expected	
+cho0aitsjjm-1	field|observed	
+cho0aitsjjm-1	field|context	
+cho0aitsjjm-1	field|summary	
+cho0aitsjjm-1	field|narration	
+cho0aitsjjm-1	field|calls	
+cho0aitsjjm-1	field|steps	
+cho0aitsjjm-1	field|clip	
+cho0aitsjjm-1	field|blender_info	
+cho0aitsjjm-1	field|tool	
+cho0aitsjjm-1	field|version	
+cho0aitsjjm-1	field|applies_from	
+cho0aitsjjm-1	field|applies_until	
+cho0aitsjjm-1	field|superseded_by	
+cho0aitsjjm-1	field|keywords	
+cho0aitsjjm-1	field|status	solved
+cho0aitsjk5-2	kind	card
+cho0aitsjk5-2	name	Render takes forever
+cho0aitsjk5-2	stack	Recipes
+cho0aitsjk5-2	script	
+cho0aitsjk5-2	field|symptom	render is very slow on a simple scene
+cho0aitsjk5-2	field|expected	
+cho0aitsjk5-2	field|observed	
+cho0aitsjk5-2	field|context	
+cho0aitsjk5-2	field|summary	
+cho0aitsjk5-2	field|narration	
+cho0aitsjk5-2	field|calls	
+cho0aitsjk5-2	field|steps	
+cho0aitsjk5-2	field|clip	
+cho0aitsjk5-2	field|blender_info	
+cho0aitsjk5-2	field|tool	
+cho0aitsjk5-2	field|version	
+cho0aitsjk5-2	field|applies_from	
+cho0aitsjk5-2	field|applies_until	
+cho0aitsjk5-2	field|superseded_by	
+cho0aitsjk5-2	field|keywords	
+cho0aitsjk5-2	field|status	stuck
+cho0aitsjk5-2	button|Mark solved	on mouseUp\n  put "solved" into field "status"\nend mouseUp\n

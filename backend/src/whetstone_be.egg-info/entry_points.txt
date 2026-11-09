@@ -1,0 +1,2 @@
+[console_scripts]
+whetstone-be = whetstone_be.__main__:main
