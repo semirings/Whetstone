@@ -1,0 +1,1 @@
+Let us fix up the start of W.  Instead of the current example cards, let the Home card display as soon as W is operational.  Until then, W shows a splash image located in Whetstone/img/splash.png.  

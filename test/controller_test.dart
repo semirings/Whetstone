@@ -139,4 +139,21 @@ void main() {
       expect(f.isRequired, isTrue);
     });
   });
+
+  test('a scene command goes to the scene hook and its summary is the result', () async {
+    final List<Map<String, Object?>> got = <Map<String, Object?>>[];
+    final WhetstoneController w = WhetstoneController(app, scene: (Map<String, Object?> op) async {
+      got.add(op);
+      return 'created Eye';
+    });
+    await w.submit('create sphere "Eye" at 0, 0, 1');
+    expect(w.error, isNull);
+    expect(got.single['shape'], 'sphere');
+    expect(w.runtime.result, 'created Eye');
+  });
+
+  test('a scene command without Blender shows a plain error', () async {
+    await c.submit('create cube');
+    expect(c.error, contains('no 3D application'));
+  });
 }

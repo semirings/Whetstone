@@ -4,93 +4,131 @@ import 'package:speakeasy/speakeasy.dart';
 
 import 'controller.dart';
 import 'dialog_io.dart';
+import 'home.dart';
 import 'model/model.dart';
 import 'storage/card_store.dart';
+import 'storage/scene_client.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-/// Sample data until storage exists (milestone 1).
-WhetstoneApp sampleApp() {
-  final WhetstoneApp app = WhetstoneApp();
-  final CardStack stack = CardStack('Recipes');
-  app.addStack(stack);
-  RecipeCard add(String title, String symptom, String status) {
-    final RecipeCard c = RecipeCard(title);
-    c.field('symptom')!.text = symptom;
-    c.field('status')!.text = status;
-    stack.addCard(c);
-    return c;
-  }
-
-  add('Camera points nowhere', 'camera view is empty after adding a camera', 'stuck');
-  add('Grease pencil has no fill', 'grease pencil strokes show no fill', 'solved');
-  final RecipeCard third =
-      add('Render takes forever', 'render is very slow on a simple scene', 'stuck');
-  third.add(CardButton('Mark solved',
-      script: 'on mouseUp\n  put "solved" into field "status"\nend mouseUp\n'));
-  return app;
-}
 
 /// Where the Whetstone backend listens (see run.sh; override with
 /// --dart-define=WHETSTONE_BACKEND_URL=...).
 const String backendUrl =
     String.fromEnvironment('WHETSTONE_BACKEND_URL', defaultValue: 'http://127.0.0.1:8402');
 
-/// Loads the cards from the backend. On a first run (nothing stored) the
-/// sample cards are saved there. If the backend cannot be reached, the sample
-/// cards are shown without a store and [warning] says so.
+/// How long the splash stays up at least, so it is seen even when the backend
+/// answers at once. Set to Duration.zero to show it only while loading.
+const Duration splashMinimum = Duration(milliseconds: 1200);
+
+/// Loads the cards from the backend and builds the app: the Home card first,
+/// then one stack per stored stack. If the backend cannot be reached the app
+/// still opens on Home, with an empty "Recipes" stack, and [warning] says that
+/// nothing will be saved.
 Future<({WhetstoneApp app, CardStore? store, List<RecipeCard> stored, String? warning})>
     startUp(CardStore store) async {
+  List<StoredCard> loaded = const <StoredCard>[];
+  CardStore? usable = store;
+  String? warning;
   try {
-    final List<StoredCard> loaded = await store.loadAll();
-    if (loaded.isNotEmpty) {
-      final WhetstoneApp app = WhetstoneApp();
-      final Map<String, CardStack> stacks = <String, CardStack>{};
-      for (final StoredCard s in loaded) {
-        final CardStack stack =
-            stacks.putIfAbsent(s.stack, () => CardStack(s.stack)..parent = app);
-        stack.addCard(s.card);
-      }
-      for (final CardStack s in stacks.values) {
-        app.addStack(s);
-      }
-      return (
-        app: app,
-        store: store,
-        stored: <RecipeCard>[for (final StoredCard s in loaded) s.card],
-        warning: null
-      );
-    }
-    final WhetstoneApp app = sampleApp();
-    final List<RecipeCard> cards = <RecipeCard>[
-      for (final HostObject s in app.children)
-        for (final HostObject c in s.children)
-          if (c is RecipeCard) c
-    ];
-    for (final RecipeCard c in cards) {
-      await store.save(c);
-    }
-    return (app: app, store: store, stored: cards, warning: null);
+    loaded = await store.loadAll();
   } on StoreException catch (e) {
-    return (
-      app: sampleApp(),
-      store: null,
-      stored: const <RecipeCard>[],
-      warning: '$e. Showing sample cards; nothing will be saved.'
-    );
+    usable = null;
+    warning = '$e. Nothing will be saved.';
   }
+  final WhetstoneApp app = WhetstoneApp();
+  final Map<String, CardStack> stacks = <String, CardStack>{};
+  for (final StoredCard s in loaded) {
+    stacks.putIfAbsent(s.stack, () => CardStack(s.stack)).addCard(s.card);
+  }
+  if (stacks.isEmpty) stacks['Recipes'] = CardStack('Recipes');
+  // The Home stack goes in first, so it is the current stack and Home the current card.
+  final CardStack homeStack = CardStack('Home')
+    ..addCard(HomeCard.standard(recipes: stacks.keys.first));
+  app.addStack(homeStack);
+  for (final CardStack s in stacks.values) {
+    app.addStack(s);
+  }
+  return (
+    app: app,
+    store: usable,
+    stored: <RecipeCard>[for (final StoredCard s in loaded) s.card],
+    warning: warning,
+  );
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final start = await startUp(HttpCardStore(Uri.parse(backendUrl)));
-  final WhetstoneController controller = WhetstoneController(
-    start.app,
-    io: DialogIo(navigatorKey),
-    store: start.store,
-    stored: start.stored,
-  )..error = start.warning;
-  runApp(WhetstoneWindow(controller: controller));
+  runApp(const Bootstrap());
+}
+
+/// Shows the splash image until the backend has answered and the cards are
+/// loaded, then opens the window on the Home card.
+class Bootstrap extends StatefulWidget {
+  const Bootstrap({super.key});
+
+  @override
+  State<Bootstrap> createState() => _BootstrapState();
+}
+
+class _BootstrapState extends State<Bootstrap> {
+  WhetstoneController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    final Stopwatch clock = Stopwatch()..start();
+    final start = await startUp(HttpCardStore(Uri.parse(backendUrl)));
+    final Duration left = splashMinimum - clock.elapsed;
+    if (left > Duration.zero) await Future<void>.delayed(left);
+    if (!mounted) return;
+    setState(() {
+      _controller = WhetstoneController(
+        start.app,
+        io: DialogIo(navigatorKey),
+        store: start.store,
+        scene: HttpScene(Uri.parse(backendUrl)).operate,
+        stored: start.stored,
+      )..error = start.warning;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final WhetstoneController? c = _controller;
+    return c == null ? const SplashScreen() : WhetstoneWindow(controller: c);
+  }
+}
+
+/// The image in img/splash.png on a dark background.
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Whetstone',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(colorSchemeSeed: Colors.indigo, brightness: Brightness.dark, useMaterial3: true),
+      home: Scaffold(
+        // The edge colour of img/splash.png, so the image has no visible border.
+        backgroundColor: const Color(0xFF121316),
+        body: Center(
+          child: Image.asset(
+            'img/splash.png',
+            fit: BoxFit.contain,
+            errorBuilder: (BuildContext c, Object e, StackTrace? st) => const Text(
+              'Whetstone',
+              style: TextStyle(fontSize: 40, fontWeight: FontWeight.w600, color: Colors.white70),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class WhetstoneWindow extends StatefulWidget {
@@ -103,8 +141,13 @@ class WhetstoneWindow extends StatefulWidget {
 }
 
 class _WhetstoneWindowState extends State<WhetstoneWindow> {
-  /// Dark by default; the button in the title bar switches.
+  /// Dark by default; View > Light/Dark Theme switches.
   ThemeMode _mode = ThemeMode.dark;
+
+  /// HyperCard showed one card and hid the message box until asked. Both extras
+  /// start hidden: View > Card List and View > Message Box.
+  bool _showList = false;
+  bool _showMessage = false;
 
   static ThemeData _theme(Brightness brightness) => ThemeData(
         colorSchemeSeed: Colors.indigo,
@@ -116,10 +159,17 @@ class _WhetstoneWindowState extends State<WhetstoneWindow> {
         _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
       });
 
+  void _toggleList() => setState(() => _showList = !_showList);
+  void _toggleMessage() => setState(() => _showMessage = !_showMessage);
+
   Future<void> _deleteCard() async {
     final BuildContext? ctx = navigatorKey.currentContext;
     final HostObject? card = widget.controller.currentCard;
     if (ctx == null || card == null) return;
+    if (card is HomeCard) {
+      widget.controller.complain('the Home card is built in and cannot be deleted');
+      return;
+    }
     final bool? ok = await showDialog<bool>(
       context: ctx,
       builder: (BuildContext c) => AlertDialog(
@@ -216,19 +266,29 @@ class _WhetstoneWindowState extends State<WhetstoneWindow> {
     if (result != null) await c.setScript(object, result);
   }
 
-  /// A submenu listing the current card's [kind]s; picking one runs [action].
-  /// With [mark], required fields show a check.
-  PlatformMenu _pick(String label, String kind, Future<void> Function(HostObject) action,
-      {bool mark = false}) {
-    final HostObject? card = widget.controller.currentCard;
-    return PlatformMenu(label: label, menus: <PlatformMenuItem>[
-      for (final HostObject o in card?.children ?? const <HostObject>[])
-        if (o.kind == kind)
-          PlatformMenuItem(
-            label: mark && o is CardField && o.isRequired ? '\u2713 ${o.name}' : o.name,
-            onSelected: () => action(o),
-          ),
-    ]);
+  Future<void> _find() async {
+    final BuildContext? ctx = navigatorKey.currentContext;
+    if (ctx == null) return;
+    final TextEditingController text = TextEditingController();
+    final String? query = await showDialog<String>(
+      context: ctx,
+      builder: (BuildContext c) => AlertDialog(
+        title: const Text('Find'),
+        content: TextField(
+          controller: text,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'text to find in any field'),
+          onSubmitted: (String v) => Navigator.pop(c, v),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, text.text), child: const Text('Find')),
+        ],
+      ),
+    );
+    text.dispose();
+    if (query != null) await widget.controller.findText(query);
   }
 
   Future<void> _renameObject(HostObject object) async {
@@ -272,13 +332,28 @@ class _WhetstoneWindowState extends State<WhetstoneWindow> {
     if (ok == true) await widget.controller.deleteObject(object);
   }
 
-  /// The menu bar. Each item sends a Speakeasy command, as HyperCard's did.
+  /// The menu bar at the top of the screen (macOS). Each item sends a
+  /// Speakeasy command, as HyperCard's did.
   List<PlatformMenu> _menus() {
     final WhetstoneController c = widget.controller;
-    PlatformMenuItem item(String label, VoidCallback run, [MenuSerializableShortcut? key]) =>
+    PlatformMenuItem item(String label, VoidCallback? run, [MenuSerializableShortcut? key]) =>
         PlatformMenuItem(label: label, shortcut: key, onSelected: run);
     SingleActivator cmd(LogicalKeyboardKey k, {bool shift = false}) =>
         SingleActivator(k, meta: true, shift: shift);
+
+    // The current card's fields or buttons as menu items. An empty list becomes
+    // one disabled "(none)" so no submenu is ever empty.
+    List<PlatformMenuItem> pick(String kind, Future<void> Function(HostObject) action,
+        {bool mark = false}) {
+      final List<PlatformMenuItem> items = <PlatformMenuItem>[
+        for (final HostObject o in c.currentCard?.children ?? const <HostObject>[])
+          if (o.kind == kind)
+            item(mark && o is CardField && o.isRequired ? '\u2713 ${o.name}' : o.name,
+                () => action(o)),
+      ];
+      return items.isEmpty ? <PlatformMenuItem>[item('(none)', null)] : items;
+    }
+
     return <PlatformMenu>[
       const PlatformMenu(label: 'Whetstone', menus: <PlatformMenuItem>[
         PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
@@ -288,37 +363,37 @@ class _WhetstoneWindowState extends State<WhetstoneWindow> {
         item('New Card', () => c.submit('create card "Untitled"'),
             cmd(LogicalKeyboardKey.keyN)),
         item('Save', c.saveCurrent, cmd(LogicalKeyboardKey.keyS)),
-        item('Delete Card\u2026', _deleteCard,
-            cmd(LogicalKeyboardKey.backspace)),
+        item('Delete Card\u2026', _deleteCard),
       ]),
       PlatformMenu(label: 'Go', menus: <PlatformMenuItem>[
+        item('Home', c.goHome, cmd(LogicalKeyboardKey.keyH, shift: true)),
         item('First', () => c.submit('go to first card'), cmd(LogicalKeyboardKey.digit1)),
         item('Previous', () => c.submit('go to previous card'), cmd(LogicalKeyboardKey.digit2)),
         item('Next', () => c.submit('go to next card'), cmd(LogicalKeyboardKey.digit3)),
         item('Last', () => c.submit('go to last card'), cmd(LogicalKeyboardKey.digit4)),
+        item('Find\u2026', _find, cmd(LogicalKeyboardKey.keyF)),
         item('All Cards', c.showAllCards, cmd(LogicalKeyboardKey.keyA, shift: true)),
       ]),
       PlatformMenu(label: 'Objects', menus: <PlatformMenuItem>[
         item('New Field\u2026', () => _newObject('field')),
         item('New Button\u2026', () => _newObject('button')),
-        PlatformMenuItemGroup(members: <PlatformMenuItem>[
-          item('Card Script\u2026', () => _editScript(c.currentCard),
-              cmd(LogicalKeyboardKey.keyE)),
-          PlatformMenu(label: 'Button Script', menus: <PlatformMenuItem>[
-            for (final HostObject b in c.currentCard?.children ?? const <HostObject>[])
-              if (b.kind == 'button') item(b.name, () => _editScript(b)),
-          ]),
-        ]),
-      PlatformMenuItemGroup(members: <PlatformMenuItem>[
-        _pick('Rename Field', 'field', _renameObject),
-        _pick('Rename Button', 'button', _renameObject),
-        _pick('Delete Field', 'field', _confirmDelete),
-        _pick('Delete Button', 'button', _confirmDelete),
-        _pick('Required Fields', 'field', (HostObject f) =>
-            c.setRequired(f as CardField, !f.isRequired), mark: true),
-      ]),
+        item('Card Script\u2026', () => _editScript(c.currentCard),
+            cmd(LogicalKeyboardKey.keyE)),
+        PlatformMenu(label: 'Button Script', menus: pick('button', _editScript)),
+        PlatformMenu(label: 'Rename Field', menus: pick('field', _renameObject)),
+        PlatformMenu(label: 'Rename Button', menus: pick('button', _renameObject)),
+        PlatformMenu(label: 'Delete Field', menus: pick('field', _confirmDelete)),
+        PlatformMenu(label: 'Delete Button', menus: pick('button', _confirmDelete)),
+        PlatformMenu(
+            label: 'Required Fields',
+            menus: pick('field', (HostObject f) => c.setRequired(f as CardField, !f.isRequired),
+                mark: true)),
       ]),
       PlatformMenu(label: 'View', menus: <PlatformMenuItem>[
+        item(_showMessage ? 'Hide Message Box' : 'Show Message Box', _toggleMessage,
+            cmd(LogicalKeyboardKey.keyM)),
+        item(_showList ? 'Hide Card List' : 'Show Card List', _toggleList,
+            cmd(LogicalKeyboardKey.keyL)),
         item(_mode == ThemeMode.dark ? 'Light Theme' : 'Dark Theme', _toggleTheme,
             cmd(LogicalKeyboardKey.keyT, shift: true)),
       ]),
@@ -334,24 +409,37 @@ class _WhetstoneWindowState extends State<WhetstoneWindow> {
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (BuildContext context, Widget? _) => PlatformMenuBar(
-      menus: _menus(),
-      child: MaterialApp(
-        title: 'Whetstone',
-        navigatorKey: navigatorKey,
-        theme: _theme(Brightness.light),
-        darkTheme: _theme(Brightness.dark),
-        themeMode: _mode,
-        home: HomePage(controller: widget.controller, onToggleTheme: _toggleTheme),
+        menus: _menus(),
+        child: MaterialApp(
+          title: 'Whetstone',
+          navigatorKey: navigatorKey,
+          theme: _theme(Brightness.light),
+          darkTheme: _theme(Brightness.dark),
+          themeMode: _mode,
+          home: HomePage(
+            controller: widget.controller,
+            showList: _showList,
+            showMessage: _showMessage,
+          ),
+        ),
       ),
-    ));
+    );
   }
 }
 
+/// One card fills the window, as in HyperCard. A thin strip below it shows
+/// where you are (3 of 12), steps between cards, and shows the last message.
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.controller, required this.onToggleTheme});
+  const HomePage({
+    super.key,
+    required this.controller,
+    required this.showList,
+    required this.showMessage,
+  });
 
   final WhetstoneController controller;
-  final VoidCallback onToggleTheme;
+  final bool showList;
+  final bool showMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -359,42 +447,77 @@ class HomePage extends StatelessWidget {
       listenable: controller,
       builder: (BuildContext context, Widget? _) {
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Whetstone'),
-            actions: <Widget>[
-              IconButton(
-                tooltip: 'Save card',
-                icon: const Icon(Icons.save_outlined),
-                onPressed: controller.saveCurrent,
-              ),
-              IconButton(
-                tooltip: Theme.of(context).brightness == Brightness.dark
-                    ? 'Light theme'
-                    : 'Dark theme',
-                icon: Icon(Theme.of(context).brightness == Brightness.dark
-                    ? Icons.light_mode
-                    : Icons.dark_mode),
-                onPressed: onToggleTheme,
-              ),
-            ],
-          ),
           body: Column(
             children: <Widget>[
               Expanded(
                 child: Row(
                   children: <Widget>[
-                    SizedBox(width: 280, child: CardList(controller: controller)),
-                    const VerticalDivider(width: 1),
+                    if (showList) ...<Widget>[
+                      SizedBox(width: 280, child: CardList(controller: controller)),
+                      const VerticalDivider(width: 1),
+                    ],
                     Expanded(child: CardView(controller: controller)),
                   ],
                 ),
               ),
               const Divider(height: 1),
-              MessageBox(controller: controller),
+              StatusStrip(controller: controller),
+              if (showMessage) ...<Widget>[
+                const Divider(height: 1),
+                MessageBox(controller: controller),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class StatusStrip extends StatelessWidget {
+  const StatusStrip({super.key, required this.controller});
+
+  final WhetstoneController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final WhetstoneController c = controller;
+    final String? error = c.error;
+    final String where = c.onHome
+        ? 'Home'
+        : c.cards.isEmpty
+            ? 'no cards'
+            : '${c.cardNumber} of ${c.cards.length}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Row(
+        children: <Widget>[
+          IconButton(
+            tooltip: 'Previous card',
+            icon: const Icon(Icons.chevron_left),
+            onPressed: () => c.submit('go to previous card'),
+          ),
+          Text(c.viewingSubstack ? 'Results "${c.substackName}": $where' : where),
+          IconButton(
+            tooltip: 'Next card',
+            icon: const Icon(Icons.chevron_right),
+            onPressed: () => c.submit('go to next card'),
+          ),
+          if (c.viewingSubstack)
+            TextButton(onPressed: c.showAllCards, child: const Text('All cards')),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              error ?? c.msg,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: error == null
+                  ? null
+                  : TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -453,6 +576,7 @@ class CardView extends StatelessWidget {
     if (card == null) {
       return const Center(child: Text('No card. Type: create card "Title"'));
     }
+    if (card is HomeCard) return HomeView(controller: controller, card: card);
     final List<HostObject> buttons = <HostObject>[
       for (final HostObject c in card.children)
         if (c.kind == 'button') c
@@ -541,6 +665,8 @@ class _FieldEditorState extends State<FieldEditor> {
   }
 }
 
+enum _Run { idle, running, done, failed }
+
 class MessageBox extends StatefulWidget {
   const MessageBox({super.key, required this.controller});
 
@@ -552,13 +678,39 @@ class MessageBox extends StatefulWidget {
 
 class _MessageBoxState extends State<MessageBox> {
   final TextEditingController _text = TextEditingController();
-  final FocusNode _focus = FocusNode();
+  late final FocusNode _focus = FocusNode(onKeyEvent: _onKey);
   final List<String> _history = <String>[];
 
+  /// idle: nothing run yet, or the text was edited since. running: orange.
+  /// done: green. failed: red, with the reason in the status strip.
+  _Run _run = _Run.idle;
+
+  /// Return runs what is in the box; Shift+Return starts a new line. Pasted
+  /// text keeps its line breaks, so several statements can be run at once.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final bool enter = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (enter && !HardwareKeyboard.instance.isShiftPressed) {
+      if (event is KeyDownEvent) _submit(_text.text);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Runs the text and leaves it in the box; only Clear empties it.
   Future<void> _submit(String line) async {
-    if (line.trim().isNotEmpty) _history.add(line);
-    _text.clear();
+    if (line.trim().isEmpty || _run == _Run.running) return;
+    _history.add(line);
+    setState(() => _run = _Run.running);
     await widget.controller.submit(line);
+    if (!mounted) return;
+    setState(() => _run = widget.controller.error == null ? _Run.done : _Run.failed);
+    _focus.requestFocus();
+  }
+
+  void _clear() {
+    _text.clear();
+    setState(() => _run = _Run.idle);
     _focus.requestFocus();
   }
 
@@ -571,30 +723,46 @@ class _MessageBoxState extends State<MessageBox> {
 
   @override
   Widget build(BuildContext context) {
-    final WhetstoneController c = widget.controller;
-    final String? error = c.error;
+    // The green and orange of the action buttons in DoubleNaught and SegForge.
+    final Color edge = switch (_run) {
+      _Run.running => const Color(0xFFE67E00),
+      _Run.failed => const Color(0xFFE5534B),
+      _ => const Color(0xFF007F00),
+    };
+    OutlineInputBorder border(double width) =>
+        OutlineInputBorder(borderSide: BorderSide(color: edge, width: width));
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          if (error != null)
-            Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error))
-          else if (c.msg.isNotEmpty)
-            Text(c.msg),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _text,
-            focusNode: _focus,
-            autofocus: true,
-            decoration: const InputDecoration(
-              prefixText: '> ',
-              hintText: 'Speakeasy, e.g.  find cards where field "symptom" contains "render"',
-              border: OutlineInputBorder(),
-              isDense: true,
+          Expanded(
+            child: TextField(
+              controller: _text,
+              focusNode: _focus,
+              autofocus: true,
+              keyboardType: TextInputType.multiline,
+              minLines: 1,
+              maxLines: 6,
+              onChanged: (_) {
+                if (_run == _Run.done || _run == _Run.failed) setState(() => _run = _Run.idle);
+              },
+              decoration: InputDecoration(
+                prefixText: '> ',
+                hintText: 'Speakeasy, e.g.  find cards where field "symptom" contains "render"',
+                isDense: true,
+                filled: _run != _Run.idle,
+                fillColor: edge.withValues(alpha: 0.12),
+                border: border(2),
+                enabledBorder: border(2),
+                focusedBorder: border(2.5),
+              ),
             ),
-            onSubmitted: _submit,
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: _run == _Run.running ? null : _clear,
+            child: const Text('Clear'),
           ),
         ],
       ),

@@ -48,9 +48,13 @@ class CardButton extends BaseHostObject {
 /// [fieldSpecs] (name, required); symptom comes first because that is how
 /// recipes are looked up.
 class RecipeCard extends BaseHostObject {
-  RecipeCard(String title, {String? id}) : super('card', title, id: id ?? newCardId()) {
-    for (final (String, bool) spec in fieldSpecs) {
-      add(CardField(spec.$1, isRequired: spec.$2));
+  /// [standardFields] false makes a card with no fields (the built-in Home card).
+  RecipeCard(String title, {String? id, bool standardFields = true})
+      : super('card', title, id: id ?? newCardId()) {
+    if (standardFields) {
+      for (final (String, bool) spec in fieldSpecs) {
+        add(CardField(spec.$1, isRequired: spec.$2));
+      }
     }
   }
 

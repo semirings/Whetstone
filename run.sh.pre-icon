@@ -1,0 +1,56 @@
+#!/usr/bin/env zsh
+# Whetstone task runner. The machinery lives in ForgeTools/forge-run.zsh; this
+# file is only Whetstone's configuration and its few project-specific hooks.
+#
+# Ports: DoubleNaught 8400, SegForge 8401, Whetstone 8402 (override WHETSTONE_PORT).
+# Cards live in storage/cards.parquet (storage/cards.tsv is a readable mirror).
+# Extra over the shared commands:  BE --clear-storage   up --with-dn
+set -e
+
+FORGE_ROOT="${0:A:h}"
+FORGE_PROG="${0:t}"
+FORGE_NAME=Whetstone
+FORGE_SLUG=whetstone
+FORGE_LABEL=com.populi.whetstone-backend
+FORGE_PORT="${WHETSTONE_PORT:-8402}"
+FORGE_BE_DIR="$FORGE_ROOT/backend"
+FORGE_BE_CMD=("$FORGE_ROOT/.venv/bin/python" -m whetstone_be)
+FORGE_BE_ENV=(WHETSTONE_PORT "$FORGE_PORT" WHETSTONE_STORAGE "$FORGE_ROOT/storage")
+FORGE_FE_DEFINES=(--dart-define=WHETSTONE_BACKEND_URL="http://127.0.0.1:$FORGE_PORT")
+# The logo renders dim in the Dock; lift it (see ../ForgeTools/app-icon.sh --help).
+FORGE_ICON_ARGS=(--brighten 1.4)
+
+DN_ROOT="${FORGE_ROOT:h}/DoubleNaught"
+
+forge_hook_prepare() {
+  if [[ ! -x "$FORGE_ROOT/.venv/bin/python" ]]; then
+    print "Creating $FORGE_ROOT/.venv"
+    python3 -m venv "$FORGE_ROOT/.venv"
+  fi
+  if ! "$FORGE_ROOT/.venv/bin/python" -c 'import whetstone_be' >/dev/null 2>&1; then
+    print "Installing backend (pip install -e backend)"
+    "$FORGE_ROOT/.venv/bin/pip" install -q -e "$FORGE_ROOT/backend" 2>&1 | grep -v "Cache entry" || true
+  fi
+}
+
+# BE --clear-storage
+forge_hook_be_arg() {
+  [[ "$1" == --clear-storage ]] || return 1
+  print "Removing $FORGE_ROOT/storage/cards.parquet and cards.tsv"
+  rm -f "$FORGE_ROOT/storage/cards.parquet" "$FORGE_ROOT/storage/cards.tsv"
+}
+
+forge_hook_be_env() {
+  export WHETSTONE_PORT="$FORGE_PORT"
+  [[ "$1" == be ]] && export WHETSTONE_RELOAD=1
+  return 0
+}
+
+# up --with-dn: also start DoubleNaught's backend (which starts SegForge's).
+forge_hook_up_arg() {
+  [[ "$1" == --with-dn ]] || return 1
+  FORGE_COMPANIONS=("$DN_ROOT")
+}
+
+source "${FORGETOOLS:-${FORGE_ROOT:h}/ForgeTools}/forge-run.zsh"
+forge_main "$@"
