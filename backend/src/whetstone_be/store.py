@@ -3,7 +3,7 @@
 A card is a ROW of the array. Its facts are COLUMNS:
 
     row = card id
-    col = kind | name | stack | script | field|<field name> | button|<button name>
+    col = kind | name | stack | background | script | field|<field name> | button|<button name>
     val = text (a button's val is its script)
 
 The file has three string columns, `row`, `col`, `val`, the same shape
@@ -30,7 +30,7 @@ from .models import Button, Card
 FIELD = "field|"
 BUTTON = "button|"
 REQUIRED = "required|"
-_PLAIN = ("kind", "name", "stack", "script")
+_PLAIN = ("kind", "name", "stack", "background", "script")
 
 Triple = tuple[str, str, str]
 
@@ -42,6 +42,8 @@ def card_to_triples(card: Card) -> list[Triple]:
         (card.id, "stack", card.stack),
         (card.id, "script", card.script),
     ]
+    if card.background:  # cards without one write no row, so old files and new stay alike
+        t.append((card.id, "background", card.background))
     t += [(card.id, FIELD + k, v) for k, v in card.fields.items()]
     t += [(card.id, BUTTON + b.name, b.script) for b in card.buttons]
     t += [(card.id, REQUIRED + n, "true") for n in card.required]

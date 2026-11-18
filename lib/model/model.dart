@@ -44,6 +44,75 @@ class CardButton extends BaseHostObject {
       : super('button', name, script: script);
 }
 
+/// Which side of the card a field is on. The face is what you read; the back
+/// holds the machine-made and bookkeeping fields (see doc/design.md).
+enum CardSide { face, back }
+
+/// One field as a background defines it. A card's own [CardField] holds the text.
+class FieldSpec {
+  const FieldSpec(
+    this.name, {
+    this.required = false,
+    this.placeholder = '',
+    this.side = CardSide.face,
+  });
+
+  final String name;
+  final bool required;
+  final String placeholder;
+  final CardSide side;
+}
+
+/// What cards of one kind share: their fields. Buttons and a script join in
+/// step 2 (doc/design.md, "Backgrounds"). A card names its background by
+/// [id]; the stored name never changes even if the title does.
+///
+/// Not yet a host object: it is not in the message path and scripts cannot
+/// see it. Today it only describes the standard fields.
+class Background {
+  const Background(this.id, this.name, this.fields);
+
+  final String id;
+  final String name;
+  final List<FieldSpec> fields;
+
+  /// The background every card has until others exist, and the one a card
+  /// with no stored background gets.
+  static const String problemAndFixId = 'problem-and-fix';
+
+  /// Same names and order as [RecipeCard.fieldSpecs]; a test keeps them equal.
+  static const Background problemAndFix = Background(problemAndFixId, 'Problem & fix', <FieldSpec>[
+    FieldSpec('symptom', required: true, placeholder: 'what goes wrong'),
+    FieldSpec('expected', required: true, placeholder: 'what you wanted'),
+    FieldSpec('observed', placeholder: 'what happened'),
+    FieldSpec('context', placeholder: 'scene, version, what you tried'),
+    FieldSpec('summary', placeholder: 'the fix in one line'),
+    FieldSpec('narration', side: CardSide.back),
+    FieldSpec('calls',
+        required: true, placeholder: 'SECONDS<TAB>CALL per line', side: CardSide.back),
+    FieldSpec('steps', placeholder: 'calls as Speakeasy', side: CardSide.back),
+    FieldSpec('clip', placeholder: 'path to screen capture', side: CardSide.back),
+    FieldSpec('blender_info', placeholder: 'version, mode, scene', side: CardSide.back),
+    FieldSpec('tool', required: true, placeholder: 'blender'),
+    FieldSpec('version', required: true, placeholder: '5.2'),
+    FieldSpec('applies_from', side: CardSide.back),
+    FieldSpec('applies_until', side: CardSide.back),
+    FieldSpec('superseded_by', side: CardSide.back),
+    FieldSpec('keywords'),
+    FieldSpec('status', required: true, placeholder: 'stuck'),
+  ]);
+
+  /// The backgrounds the app knows. Stored ones join this in step 3.
+  static const List<Background> builtIn = <Background>[problemAndFix];
+
+  /// The background with [id], or [problemAndFix] if there is none (a card
+  /// stored before backgrounds existed has no id).
+  static Background byId(String? id) => builtIn.firstWhere(
+        (Background b) => b.id == id,
+        orElse: () => problemAndFix,
+      );
+}
+
 /// One recipe. The card's name is the recipe title. Fields are created from
 /// [fieldSpecs] (name, required); symptom comes first because that is how
 /// recipes are looked up.
@@ -57,6 +126,9 @@ class RecipeCard extends BaseHostObject {
       }
     }
   }
+
+  /// Id of this card's [Background]. Stored with the card.
+  String backgroundId = Background.problemAndFixId;
 
   static const List<(String, bool)> fieldSpecs = <(String, bool)>[
     ('symptom', true),

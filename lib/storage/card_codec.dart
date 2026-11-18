@@ -12,6 +12,7 @@ Map<String, Object?> cardToJson(RecipeCard card, {String? stack}) {
     'name': card.name,
     'kind': 'card',
     'stack': stack ?? card.parent?.name ?? 'Recipes',
+    'background': card.backgroundId,
     'script': card.script,
     'fields': <String, String>{
       for (final HostObject c in card.children)
@@ -34,6 +35,9 @@ Map<String, Object?> cardToJson(RecipeCard card, {String? stack}) {
 RecipeCard cardFromJson(Map<String, Object?> json) {
   final RecipeCard card = RecipeCard('${json['name'] ?? ''}', id: '${json['id']}');
   card.script = '${json['script'] ?? ''}';
+  // Keep an id this build does not know, so saving never rewrites a newer app's value.
+  final String background = '${json['background'] ?? ''}';
+  if (background.isNotEmpty) card.backgroundId = background;
   final Object? fields = json['fields'];
   if (fields is Map) {
     fields.forEach((Object? name, Object? text) {

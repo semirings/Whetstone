@@ -36,6 +36,22 @@ void main() {
       expect(cardToJson(back, stack: 'Recipes'), json);
     });
 
+    test('the background is stored with the card', () {
+      final RecipeCard c = RecipeCard('R', id: 'r2');
+      expect(cardToJson(c)['background'], Background.problemAndFixId);
+      c.backgroundId = 'how-to';
+      expect(cardFromJson(cardToJson(c)).backgroundId, 'how-to',
+          reason: 'an id this build does not know is kept, not replaced');
+    });
+
+    test('a card stored without a background gets Problem & fix', () {
+      final Map<String, Object?> json = cardToJson(RecipeCard('R', id: 'r3'))
+        ..remove('background');
+      expect(cardFromJson(json).backgroundId, Background.problemAndFixId);
+      json['background'] = '';
+      expect(cardFromJson(json).backgroundId, Background.problemAndFixId);
+    });
+
     test('new cards get ids that differ from each other', () {
       expect(RecipeCard('a').id, isNot(RecipeCard('b').id));
     });

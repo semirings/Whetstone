@@ -50,4 +50,45 @@ void main() {
     f.setProperty('TEXT', 'no fill');
     expect(f.getProperty('text'), 'no fill');
   });
+
+  group('background', () {
+    test('Problem & fix lists the standard fields, same names and order', () {
+      expect(Background.problemAndFix.fields.map((FieldSpec f) => f.name).toList(),
+          RecipeCard.fieldSpecs.map(((String, bool) s) => s.$1).toList());
+    });
+
+    test('Problem & fix marks the same fields required', () {
+      expect(
+          <String>[
+            for (final FieldSpec f in Background.problemAndFix.fields)
+              if (f.required) f.name
+          ],
+          <String>[
+            for (final (String, bool) s in RecipeCard.fieldSpecs)
+              if (s.$2) s.$1
+          ]);
+    });
+
+    test('face and back follow the sketches', () {
+      List<String> side(CardSide s) => <String>[
+            for (final FieldSpec f in Background.problemAndFix.fields)
+              if (f.side == s) f.name
+          ];
+      expect(side(CardSide.back), <String>[
+        'narration', 'calls', 'steps', 'clip', 'blender_info',
+        'applies_from', 'applies_until', 'superseded_by',
+      ]);
+      expect(side(CardSide.face), <String>[
+        'symptom', 'expected', 'observed', 'context', 'summary',
+        'tool', 'version', 'keywords', 'status',
+      ]);
+    });
+
+    test('a new card uses Problem & fix; an unknown id falls back to it', () {
+      expect(RecipeCard('t').backgroundId, Background.problemAndFixId);
+      expect(Background.byId(null), same(Background.problemAndFix));
+      expect(Background.byId('nope'), same(Background.problemAndFix));
+      expect(Background.byId(Background.problemAndFixId), same(Background.problemAndFix));
+    });
+  });
 }

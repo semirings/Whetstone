@@ -21,10 +21,11 @@ Whetstone borrows HyperCard's shape and vocabulary. It does not copy it (see "De
 | Field | A named text slot on a card (symptom, calls, ...) |
 | Button | A named action with a script (record, replay, search) |
 | Message box | A one-line command prompt that runs Speakeasy |
+| Background | What cards of one kind share: fields, buttons, script (e.g. "Problem & fix") |
 | Script / handler | Speakeasy code attached to an object |
-| Message passing | button, then card, then stack, then Whetstone |
+| Message passing | button, then card, then background, then stack, then Whetstone |
 
-Departures: cards are recipes with a fixed set of fields, not free-form; no card background or painting layer in v1; the command set is far smaller than HyperTalk's; scripts can query a D4M backend and drive Blender; search and recording are first-class features.
+Departures: cards are recipes with a fixed set of fields, not free-form; no painting layer; backgrounds hold fields, buttons and scripts but no graphics (see "Backgrounds"); the command set is far smaller than HyperTalk's; scripts can query a D4M backend and drive Blender; search and recording are first-class features.
 Grammar source: Jeanne A. E. DeVoto, *Formal Syntax of HyperTalk*, version 2.2. Whetstone and Speakeasy are not affiliated with Apple.
 
 ## Problem
@@ -38,6 +39,21 @@ Tool proficiency costs bandwidth, and Blender is the worst offender. When you fi
 - **Whetstone** (top of the message path): the app itself: current stack, current card, message box.
 
 Properties common to all: `id`, `name`, `script`. Everything else is per type.
+
+## Backgrounds
+*Added 2026-11-18. Overturns "no card background in v1".*
+
+A **background** is what cards of one kind share: the field definitions (name, required, placeholder, face or back), the buttons, and a script. A card holds only its own text, any fields or buttons of its own, and the id of its background. This replaces copying a master card: change the background and every card of that kind changes with it. "Problem & fix" is the first background; its face and back are the two sketches in `doc/sketch/`.
+
+- **Message path:** button, card, background, stack, app. A handler such as `on solved` is written once on the background.
+- **Lookup:** `field "x"` looks on the card, then on its background.
+- **Speakeasy (planned):** `the background of this card`; `create card "x" with background "How-to"`. A new card takes the current card's background, as in HyperCard. Home tiles use the second form.
+- **Editing:** Objects > Edit Background. Background fields and buttons change only there; this replaces "the standard fields can't be renamed or deleted".
+- **Storage:** each card has a `background` column holding the background id. Background rows (`kind=background`) come in step 3. A card with no stored background is Problem & fix. An id the app doesn't know is kept as it is.
+- **Left out:** shared text (one value for every card), background graphics, switching a card's background.
+- **Defaults taken, overturn any:** a deleted background field leaves its text on the cards as card-only fields; the face/back split belongs to the background; Home stays outside the system.
+
+Steps: (1) model and storage with one built-in background. *Done: `Background`, `FieldSpec`, `RecipeCard.backgroundId`, the `background` column.* (2) message path and the `background` noun in Speakeasy, which needs a hook there so an object's message parent can differ from its container. (3) Edit Background, stored backgrounds, Home tiles that create cards, a second background (How-to).
 
 ## The recipe card
 Symptom first, because that is how you will look for it. A symptom is what you observe that is wrong, in your own words, not the cause and not the fix.

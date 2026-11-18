@@ -15,6 +15,7 @@ class Card(BaseModel):
     name: str = ""
     kind: str = "card"
     stack: str = "Recipes"
+    background: str = ""  # id of the card's background; "" means the app's default
     script: str = ""
     fields: dict[str, str] = Field(default_factory=dict)
     buttons: list[Button] = Field(default_factory=list)

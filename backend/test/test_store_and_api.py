@@ -133,3 +133,21 @@ def test_required_fields_round_trip(client):
     card = {"id": "r1", "name": "x", "fields": {"a": "", "b": "1"}, "required": ["b"]}
     assert client.put("/cards/r1", json=card).status_code in (200, 201)
     assert client.get("/cards/r1").json()["required"] == ["b"]
+
+
+def test_background_round_trips(client):
+    assert client.put("/cards/b1", json=body("b1", background="problem-and-fix")).status_code == 200
+    assert client.get("/cards/b1").json()["background"] == "problem-and-fix"
+
+
+def test_background_defaults_to_empty_and_writes_no_row(tmp_path):
+    s = ParquetCardStore(tmp_path)
+    s.put(card("c1", name="N"))
+    cols = pq.read_table(tmp_path / "cards.parquet").column("col").to_pylist()
+    assert "background" not in cols
+    assert ParquetCardStore(tmp_path).get("c1").background == ""
+
+
+def test_background_survives_restart(tmp_path):
+    ParquetCardStore(tmp_path).put(card("c1", background="how-to"))
+    assert ParquetCardStore(tmp_path).get("c1").background == "how-to"
